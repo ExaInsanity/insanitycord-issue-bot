@@ -3,6 +3,8 @@ using DSharpPlus.EventArgs;
 
 using Microsoft.Extensions.Logging;
 
+using Newtonsoft.Json;
+
 using System;
 using System.IO;
 using System.Linq;
@@ -12,27 +14,30 @@ namespace IssueBot
 {
     public class IssueBot
     {
-        private static UInt64 IBDevChannel, StarnightDevChannel;
-        private static UInt64 IBSupportChannel, StarnightSupportChannel;
+        public static Config Configuration { get; set; }
 
         public async static Task Main()
         {
-            StreamReader reader = new("./config.txt");
+            if(!File.Exists("./config.json"))
+            {
+                StreamWriter writer = new(File.Create("./config.json"));
+                writer.Write(JsonConvert.SerializeObject(new Config()));
+                writer.Flush();
+                return;
+            }
 
-            String Token = reader.ReadLine();
-            IBDevChannel = Convert.ToUInt64(reader.ReadLine());
-            StarnightDevChannel = Convert.ToUInt64(reader.ReadLine());
-            IBSupportChannel = Convert.ToUInt64(reader.ReadLine());
-            StarnightSupportChannel = Convert.ToUInt64(reader.ReadLine());
+            StreamReader reader = new("./config.json");
+            Configuration = JsonConvert.DeserializeObject<Config>(reader.ReadToEnd());
+            reader.Close();
 
             DiscordClient client = new(new DiscordConfiguration
             {
-                Token = Token,
+                Token = Configuration.Token,
                 TokenType = TokenType.Bot,
                 Intents = DiscordIntents.AllUnprivileged,
                 AlwaysCacheMembers = false,
                 MessageCacheSize = 0,
-                MinimumLogLevel = LogLevel.Debug
+                MinimumLogLevel = LogLevel.Information
             });
 
             await client.ConnectAsync();
@@ -42,20 +47,13 @@ namespace IssueBot
             await Task.Delay(-1);
         }
 
-        private static async Task Client_MessageCreated(DiscordClient sender, MessageCreateEventArgs e)
+        private static Task Client_MessageCreated(DiscordClient sender, MessageCreateEventArgs e)
         {
-            if (!e.Message.Content.Contains("##"))
-                return;
-
-            // get the issue ID
-            Int32 index = e.Message.Content.IndexOf("##");
-            String issueRef = e.Message.Content[(index + 2)..].Split(' ')[0];
-
-            if (e.Channel.Id == IBDevChannel || e.Channel.Id == IBSupportChannel)
-                await e.Message.RespondAsync($"https://github.com/InsanityBot/insanitybot/issues/{issueRef}");
-
-            else if (e.Channel.Id == StarnightDevChannel || e.Channel.Id == StarnightSupportChannel)
-                await e.Message.RespondAsync($"https://github.com/InsanityBot/starnight/issues/{issueRef}");
+            _ = Task.Run(() =>
+            {
+                Parser.Parse(e);
+            });
+            return Task.CompletedTask;
         }
     }
 }
